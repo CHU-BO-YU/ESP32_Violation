@@ -7,6 +7,8 @@
 
 LiquidCrystal_I2C lcd(0x27, 16, 2); 
 
+WiFiManager wm;
+
 unsigned long lastScan = 0;
 const unsigned long scanInterval = 10000;  //掃描時間
 
@@ -27,6 +29,9 @@ void setup(){
   lcd.init();
   lcd.backlight();
   lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("WiFi Pairing...");
   
   // Connect to Wi-Fi
     WiFiManager wm;
@@ -43,6 +48,7 @@ void setup(){
 
   // Print ESP Local IP Address
   Serial.println(WiFi.localIP());
+  lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print(WiFi.localIP());
 
