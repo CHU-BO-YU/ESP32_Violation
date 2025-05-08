@@ -7,7 +7,8 @@
 
 LiquidCrystal_I2C lcd(0x27, 16, 2); 
 
-#define RESET_BUTTON_PIN 13  //RESTE按鈕
+unsigned long lastScan = 0;
+const unsigned long scanInterval = 10000;  //掃描時間
 
 String Plate = "";
 
@@ -70,25 +71,20 @@ void setup(){
   
   // Start server
   server.begin();
-  pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
 }
   
 void loop() {
-  //按鈕重置wifi
-  int press = 0;
-  if(digitalRead(RESET_BUTTON_PIN) == LOW){
-    if(press == 0) press = millis();
-
-    //長按3秒重置
-    if(millis() - press > 3000){
-      WiFiManager wm;
-      wm.resetSettings();
-      delay(1000);
-      ESP.restart();
-    }
-    //放開重置時間
-    else{
-      press = 0;
+  //如果找到ssid wifi_reset重置wifi
+  if (millis() - lastScan > scanInterval) {
+    lastScan = millis();
+    int n = WiFi.scanNetworks();
+    for (int i = 0; i < n; i++) {
+      if (WiFi.SSID(i) == "wifi_reset") {
+        Serial.println("開始重設Wi-Fi...");
+        wm.resetSettings();     //清除儲存的Wi-Fi
+        delay(1000);
+        ESP.restart();          //重新啟動
+      }
     }
   }
 }
