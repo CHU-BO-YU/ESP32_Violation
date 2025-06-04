@@ -1,9 +1,23 @@
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+import socket
+import ipaddress
 import time
 
+# 自動取得本機 IP 並產生 ip_base（假設子網為 /24）
+def get_ip_base():
+    hostname = socket.gethostname()
+    local_ip = socket.gethostbyname(hostname)
+    try:
+        ip_obj = ipaddress.IPv4Interface(f"{local_ip}/24")
+        network = ip_obj.network
+        return str(network.network_address)[:-1]  # e.g. "140.127.45."
+    except Exception as e:
+        print(f"Failed to get local IP base: {e}")
+        return "192.168.1."  # fallback 預設值
+
 # 掃描網段設定
-ip_base = "140.127.45."
+ip_base = get_ip_base()
 ip_range = [f"{ip_base}{i}" for i in range(1, 255)]
 
 # ping 單一 IP（靜音）
@@ -30,7 +44,7 @@ def normalize_mac(mac_raw):
     return mac_raw.strip().lower().replace(":", "-")
 
 def main():
-    print("📡 Scanning network, please wait...")
+    print(f"📡 Scanning network on {ip_base}0/24, please wait...")
     start = time.time()
 
     with ThreadPoolExecutor(max_workers=100) as executor:
@@ -38,8 +52,8 @@ def main():
 
     alive_ips = [ip for ip in results if ip]
     print(f"\n✅ Active IPs ({len(alive_ips)} found):")
-    #for ip in alive_ips:
-        #print(f"  {ip}")
+    # for ip in alive_ips:
+    #     print(f"  {ip}")
 
     arp_lines = get_arp_table()
     mac_input = normalize_mac(input("\n🔎 Enter MAC address (e.g. 8C:CE:4E:A5:93:34): "))
