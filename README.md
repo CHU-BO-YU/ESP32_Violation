@@ -1,123 +1,115 @@
-# 🚗 違停偵測系統 Parking Violation Detection System
+# ESP32\_Violation
 
-本專案使用 ESP32-CAM 進行影像擷取，搭配車牌讀取 API 與 Telegram 推播，達成 **即時違停偵測與警告通知**。偵測結果會儲存至 SQLite 資料庫，並透過警報裝置與 Telegram 同步通知駕駛人與管理者。
+一套基於 ESP32-CAM 的違規停車偵測與提醒系統
 
----
+## 專案簡介
 
-## 📦 功能說明
+本專案設計一套低成本、模組化的違停偵測系統，透過 ESP32-CAM 擷取影像，自動辨識違停車輛並發送警告訊息至第二塊 ESP32 顯示端。系統支援多車牌排程、斷線自動重連與資料庫儲存，並可自動尋找伺服器 IP，適合部署於校園、社區或工廠內網環境。
 
-* 每 10 秒拍攝一張照片
-* 使用 [Plate Recognizer](https://platerecognizer.com/) API 進行車牌 OCR 讀取
-* 讀取結果儲存於 SQLite 資料庫
-* 偵測同一車車停留超過 `config.VIOLATION_TIME` 秒 → 標記為違規
-* 初次偵測即送出警報（ESP32 顯示/蜂鳴器）
-* 達違規門準後 → 發送 Telegram 推播（文字＋照片）
-* 20 秒未再次偵測 → 標記為「已離開」
+## 系統架構
 
----
+* **ESP32-CAM 偵測端**：
 
-## 📁 專案結構
+  * 每 10 秒拍照
+  * 上傳至 Flask Server
+  * 呼叫 Plate Recognizer API 辨識車牌
+  * 將結果儲存至資料庫
+
+* **Flask Server（本地端）**：
+
+  * 接收圖片並儲存
+  * 整合車牌辨識 API
+  * 記錄資料至 SQLite
+  * 每 10 秒發送未通知車牌至顯示端
+
+* **ESP32 顯示端**：
+
+  * 接收 `/plate?value=ABC123` 指令
+  * 顯示車牌與警告 10 秒
+
+## 專案目錄
 
 ```
-📁 project/
-🔜 config.py                  # 配置檔：ESP32 IP、API KEY、違規秒數
-🔜 every_10s_take_photo.py    # 主程式：攝影、讀取、資料處理、推播
-🔜 photo/                     # 儲存圖片資料夾
-🔜 PARKING_VIOLATION          # SQLite 資料庫
+ESP32_Violation/
+├── IP_Finder.py               # UDP / MAC 查詢伺服器 IP 工具
+├── Violation.py               # 主伺服器程式（Flask）
+├── config.py                  # API 金鑰與伺服器設定（應避免上傳）
+├── violation_database.db      # SQLite 資料庫
+├── ESP32 code/
+│   ├── CAM端/video_stream/    # ESP32-CAM 偵測端程式
+│   └── 1602端/get_plate/      # ESP32 顯示端程式（1602 LCD）
+├── testing program/           # 測試模組（OCR、影像擷取、資料儲存）
+│   ├── TP_OCR.py
+│   ├── every_10s_take_photo.py
+│   ├── get_video_from_esp32.py
+│   ├── save_plate_to_sql.py
+│   └── ocr.py
+└── README.md
 ```
 
----
+## IP Finder 工具
 
-## ⚙️ 環境需求
+`IP_Finder.py` 提供手動查詢伺服器 IP 的功能，使用者可依據 ESP32 的 MAC 位址尋找當前 IP。
 
-* Python 3.8+
-* 套件安裝：
+### 功能說明：
 
-  ```bash
-  pip install requests opencv-python
-  ```
-* ESP32-CAM 可串流影像 (/stream)
-* Plate Recognizer API Key (免費註冊即可)
-* Telegram Bot Token 與群組 Chat ID
+* **MAC 查詢模式（手動）**：
 
----
+  * 使用者輸入 ESP32 的 MAC 位址（如：34:85:18\:AB\:CD\:EF）
+  * 程式從 DHCP 資訊或網路掃描中查詢對應 IP
+  * 回傳結果供手動設定 ESP32 上傳目標伺服器位址
 
-## 🔧 config.py 範例
+### 使用方式：
 
-```python
-# config.py（可用環境變數方式轉接）
-
-import os
-from dotenv import load_dotenv
-load_dotenv()
-
-# Plate Recognizer API 金鑰
-API_KEY = os.getenv('API_KEY') or 'Token YOUR_PLATE_RECOGNIZER_API_KEY'
-
-# ESP32-CAM 影像串流 IP
-ESP32_CAM_IP = os.getenv('ESP32_CAM_IP') or '192.168.1.100'
-
-# ESP32 警告裝置 (e.g., 蜂鳴器/顯示) IP
-ESP32_ALERT_IP = os.getenv('ESP32_ALERT_IP') or '192.168.1.101'
-
-# 判定為違規的秒數門準
-VIOLATION_TIME = int(os.getenv('VIOLATION_TIME', 30))
-
-# Telegram Bot 設定
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN') or 'your_telegram_bot_token'
-TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID') or 'your_chat_id_or_group_id'
-```
-
-> ✅ 可選用 `.env` 檔案放置敏感資訊，例如：
->
-> ```dotenv
-> API_KEY=Token YOUR_PLATE_RECOGNIZER_API_KEY
-> ESP32_CAM_IP=192.168.1.100
-> ESP32_ALERT_IP=192.168.1.101
-> VIOLATION_TIME=30
-> TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-> TELEGRAM_CHAT_ID=your_chat_id_or_group_id
-> ```
-
----
-
-## 🚀 執行方式
+啟動程式後依照指引輸入 ESP32 的 MAC 位址，即可查詢對應 IP。
 
 ```bash
-python every_10s_take_photo.py
+python IP_Finder.py
 ```
 
----
+### 範例輸出：
 
-## 📊 資料庫欄位說明（SQLite）
+```bash
+== MAC 查詢模式 ==
+Searching for MAC: 34:85:18:AB:CD:EF
+Found IP: 192.168.1.101
+```
 
-| 欄位名稱            | 說明                  |
-| --------------- | ------------------- |
-| `id`            | 自動遞增編號              |
-| `plate`         | 車牌號碼                |
-| `first_seen`    | 初次偵測時間 (timestamp)  |
-| `last_seen`     | 最近偵測時間              |
-| `leave`         | 是否離開 (True / False) |
-| `is_violation`  | 是否違規 (True / False) |
-| `alert_sent`    | 是否已推播通知             |
-| `snapshot_path` | 照片路徑                |
+## 資料庫結構（SQLite）
 
----
+| 欄位          | 說明       |
+| ----------- | -------- |
+| plate       | 車牌號碼     |
+| first\_seen | 初次偵測時間   |
+| last\_seen  | 最近偵測時間   |
+| alert\_sent | 是否已提醒過駕駛 |
+| left        | 車輛是否已離開  |
+| violate     | 是否違規     |
 
-## 📢 推播格式（Telegram）
+## 安裝與執行
 
-* 文字內容：
+### 伺服器端
 
-  ```
-  🚨 偵測到違規車車：ABC123
-  🕒 拍攝時間：2025/05/05 01:20:30
-  ```
-* 附加即時拍攝照片
+```bash
+pip install flask requests
+python Violation.py
+```
 
----
+### ESP32 偵測端與顯示端
 
-## 🛎️ 警報流程
+請將 `ESP32 code/` 內的 `.ino` 程式上傳至對應裝置：
 
-1. 初次偵測車牌 → 呼叫 `/plate?value=...車牌`
-2. 每次推播一次，防止重複
-3. 全部違停推播完畢 → 呼叫 `/plate?value=stop` 停止警示顯示
+* `video_stream.ino` → CAM 端
+* `get_plate.ino` → 顯示端
+
+## 系統特色
+
+* 支援多車牌辨識與拍照排程
+* 車牌違規通知可排隊自動發送
+* 支援 MAC 查詢伺服器 IP（手動）
+* 資料本地儲存，可供後續查詢分析
+* 具備測試模組與可擴充架構
+
+## 授權
+
+MIT License
